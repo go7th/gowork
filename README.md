@@ -369,7 +369,7 @@ We chose AGPL-3.0 to protect this project from being cloned, rebranded, and sold
 
 This ensures the community benefits from all improvements, while preventing companies from simply copying the code and profiting without contributing.
 
-**Commercial License:** If you need a proprietary license for enterprise use, contact: [your-email@example.com]
+**Commercial License:** If you need a proprietary license for enterprise use, contact: go7thxin@gmail.com
 
 ### 为什么选择 AGPL？
 
