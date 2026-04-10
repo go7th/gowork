@@ -11,7 +11,7 @@
 
 ```
 ╔══════════════════════════════════════╗
-║           GoWork v0.1.0              ║
+║           GoWork v1.0.0              ║
 ╚══════════════════════════════════════╝
   Model: Qwen3.5-4B (MLX, localhost:8080)
   Tools: read_file, edit_file, bash, grep, glob, web_search...
