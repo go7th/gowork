@@ -16,6 +16,8 @@ pub struct RoleConfig {
     pub api_key: Option<String>,
     /// If true, this role defaults to --no-tools (skip tool registration).
     pub no_tools: Option<bool>,
+    /// Override the inline Hermes/Qwen tool-call parser for this role.
+    pub tool_parse_fallback: Option<bool>,
     /// Human-readable description shown by --list-roles.
     pub description: Option<String>,
 }
@@ -28,6 +30,8 @@ pub struct FileConfig {
     /// SearXNG instance URL for web_search (e.g. "http://localhost:8888")
     /// If set, web_search uses SearXNG JSON API instead of DuckDuckGo HTML scraping.
     pub searxng_url: Option<String>,
+    /// Global default for the inline Hermes/Qwen tool-call parser. Default: true.
+    pub tool_parse_fallback: Option<bool>,
     /// Named role presets (e.g. "summarize", "code", "chat").
     /// Use BTreeMap so `--list-roles` output is stable/sorted.
     #[serde(default)]
@@ -122,13 +126,26 @@ pub fn resolve_llm_config_with_role(
     let api_key = cli_api_key
         .or_else(|| role_cfg.as_ref().and_then(|r| r.api_key.clone()))
         .or(file_cfg.api_key.clone());
+    let tool_parse_fallback = role_cfg
+        .as_ref()
+        .and_then(|r| r.tool_parse_fallback)
+        .or(file_cfg.tool_parse_fallback)
+        .unwrap_or(true);
 
     let resolved = ResolvedRole {
         no_tools: role_cfg.as_ref().and_then(|r| r.no_tools).unwrap_or(false),
         found,
     };
 
-    (LlmConfig { base_url, model, api_key }, resolved)
+    (
+        LlmConfig {
+            base_url,
+            model,
+            api_key,
+            tool_parse_fallback,
+        },
+        resolved,
+    )
 }
 
 /// Backward-compat wrapper (no role).

@@ -1,5 +1,6 @@
 use anyhow::Result;
 use colored::Colorize;
+use std::io::Write;
 
 use crate::llm::{LlmClient, LlmConfig, Message, StreamEvent};
 use crate::tools::ToolRegistry;
@@ -129,6 +130,7 @@ impl AgentLoop {
                 match event {
                     StreamEvent::Token(token) => {
                         print!("{}", token);
+                        let _ = std::io::stdout().flush();
                         assistant_content.push_str(&token);
                     }
                     StreamEvent::ToolCall(tc) => {

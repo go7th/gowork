@@ -184,6 +184,12 @@ pub struct LlmConfig {
     pub base_url: String,
     pub model: String,
     pub api_key: Option<String>,
+    /// Parse Hermes/Qwen-style `<tool_call>` and `<function=...>` tags out of
+    /// the content stream when the backend doesn't translate them into
+    /// OpenAI `tool_calls` JSON. Only activates when tools are registered for
+    /// the current request and the backend hasn't already emitted a native
+    /// tool_call delta. Default: true.
+    pub tool_parse_fallback: bool,
 }
 
 impl Default for LlmConfig {
@@ -192,6 +198,7 @@ impl Default for LlmConfig {
             base_url: "http://localhost:11434/v1".to_string(),
             model: "qwen2.5-coder:7b".to_string(),
             api_key: None,
+            tool_parse_fallback: true,
         }
     }
 }
