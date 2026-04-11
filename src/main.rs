@@ -11,7 +11,7 @@ use clap::Parser;
 use std::io::Read as _;
 
 use cli::Shell;
-use config::{load_file_config, resolve_llm_config};
+use config::{load_file_config, resolve_llm_config_with_role};
 
 mod cache;
 pub mod stats;
@@ -64,19 +64,69 @@ struct Args {
     /// Reset token statistics
     #[arg(long)]
     stats_reset: bool,
+
+    /// Use a named role preset from ~/.gowork/config.toml (e.g. "summarize", "code", "chat").
+    /// Role config overrides top-level config but is overridden by CLI flags.
+    #[arg(long, env = "GOWORK_ROLE")]
+    role: Option<String>,
+
+    /// List all configured roles and exit.
+    #[arg(long)]
+    list_roles: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    // Resolve config: CLI > env (handled by clap) > config file > defaults
-    let file_cfg = load_file_config();
-    let llm_config = resolve_llm_config(args.base_url, args.model, args.api_key);
-    let searxng_url = args.searxng_url.or(file_cfg.searxng_url);
-
     // Ensure config dirs exist
     let _ = config::ensure_dirs();
+
+    // Handle --list-roles first (before doing any config merging)
+    if args.list_roles {
+        let file_cfg = load_file_config();
+        if file_cfg.roles.is_empty() {
+            println!("No roles configured. Add [roles.<name>] sections to ~/.gowork/config.toml");
+        } else {
+            println!("Configured roles ({}):", file_cfg.roles.len());
+            for (name, rc) in &file_cfg.roles {
+                println!("\n  {}", name);
+                if let Some(d) = &rc.description {
+                    println!("    description: {}", d);
+                }
+                if let Some(u) = &rc.base_url {
+                    println!("    base_url:    {}", u);
+                }
+                if let Some(m) = &rc.model {
+                    println!("    model:       {}", m);
+                }
+                if let Some(k) = &rc.api_key {
+                    let masked = if k.len() > 8 { format!("{}…{}", &k[..4], &k[k.len()-4..]) } else { "***".into() };
+                    println!("    api_key:     {}", masked);
+                }
+                if let Some(nt) = rc.no_tools {
+                    println!("    no_tools:    {}", nt);
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    // Resolve config: CLI > role > env (via clap) > top-level config > built-in defaults
+    let file_cfg = load_file_config();
+    let (llm_config, resolved_role) = resolve_llm_config_with_role(
+        args.base_url,
+        args.model,
+        args.api_key,
+        args.role.as_deref(),
+    );
+    if args.role.is_some() && !resolved_role.found {
+        eprintln!("Warning: role '{}' not found in ~/.gowork/config.toml, using default config",
+            args.role.as_deref().unwrap_or(""));
+    }
+    // Role can default no_tools=true; CLI --no-tools still takes precedence
+    let effective_no_tools = args.no_tools || resolved_role.no_tools;
+    let searxng_url = args.searxng_url.or(file_cfg.searxng_url);
 
     // Stats commands
     if args.stats_reset {
@@ -94,7 +144,7 @@ async fn main() -> Result<()> {
     if let Some(ref batch_pattern) = args.batch {
         // Batch mode
         let prompt_template = args.prompt.unwrap_or_else(|| "summarize: {}".to_string());
-        run_batch(&llm_config, batch_pattern, &prompt_template, args.no_tools, args.cache, searxng_url).await?;
+        run_batch(&llm_config, batch_pattern, &prompt_template, effective_no_tools, args.cache, searxng_url).await?;
     } else if let Some(prompt) = args.prompt {
         // One-shot mode
         let final_prompt = build_prompt(&prompt, args.file.as_deref())?;
@@ -110,7 +160,7 @@ async fn main() -> Result<()> {
         }
 
         let start = std::time::Instant::now();
-        let output = run_oneshot(&llm_config, &final_prompt, args.no_tools, searxng_url).await?;
+        let output = run_oneshot(&llm_config, &final_prompt, effective_no_tools, searxng_url).await?;
         let duration_ms = start.elapsed().as_millis() as u64;
 
         // Record stats
