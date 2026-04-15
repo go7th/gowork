@@ -194,7 +194,11 @@ impl AgentLoop {
 
                 // Show truncated output
                 let display_output = if result.output.len() > 500 {
-                    format!("{}... ({} chars total)", &result.output[..500], result.output.len())
+                    let mut end = 500;
+                    while !result.output.is_char_boundary(end) {
+                        end -= 1;
+                    }
+                    format!("{}... ({} bytes total)", &result.output[..end], result.output.len())
                 } else {
                     result.output.clone()
                 };
@@ -223,7 +227,13 @@ fn print_tool_args(tool_name: &str, args: &serde_json::Value) {
         }
         "bash" => {
             if let Some(cmd) = args["command"].as_str() {
-                let display = if cmd.len() > 100 { &cmd[..100] } else { cmd };
+                let display = if cmd.len() > 100 {
+                    let mut end = 100;
+                    while !cmd.is_char_boundary(end) {
+                        end -= 1;
+                    }
+                    &cmd[..end]
+                } else { cmd };
                 println!("  {} {}", "$".dimmed(), display);
             }
         }
