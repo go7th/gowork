@@ -5,11 +5,14 @@ use std::io::Write;
 use crate::llm::{LlmClient, LlmConfig, Message, StreamEvent};
 use crate::tools::ToolRegistry;
 
-const SYSTEM_PROMPT: &str = r#"You are a powerful coding assistant. You help users with software engineering tasks including writing code, debugging, refactoring, and explaining code.
+const SYSTEM_PROMPT: &str = r#"You are a powerful coding assistant called "gowork". You help users with software engineering tasks including writing code, debugging, refactoring, and explaining code.
 
-You have access to tools to interact with the local filesystem and execute commands. Use them when needed.
+You have access to tools to interact with the local filesystem and execute commands.
 
 Rules:
+- Only use tools when the task genuinely requires them (e.g. reading/writing files, running commands)
+- Do NOT use tools for general conversation, opinion questions, or questions about your own behavior
+- If a tool returns no useful results, stop and answer based on what you already know — do not retry with different queries
 - Read files before editing them
 - Be concise and direct
 - Prefer editing existing files over creating new ones
@@ -108,9 +111,24 @@ impl AgentLoop {
     }
 
     async fn run_loop(&mut self, capture: bool) -> Result<String> {
+        const MAX_ITERATIONS: usize = 40;
+        const MAX_SAME_TOOL_STREAK: usize = 4;
+
         let mut captured_output = String::new();
+        let mut iteration = 0;
+        let mut same_tool_streak = 0usize;
+        let mut last_tool_name = String::new();
 
         loop {
+            iteration += 1;
+            if iteration > MAX_ITERATIONS {
+                eprintln!(
+                    "\n{}: agent loop reached {} iterations, stopping.",
+                    "Warning".yellow().bold(),
+                    MAX_ITERATIONS
+                );
+                break;
+            }
             let tool_defs = self.tools.definitions();
             let tools = if tool_defs.is_empty() {
                 None
@@ -170,6 +188,29 @@ impl AgentLoop {
                 captured_output.push('\n');
             }
 
+            // Detect same-tool repetition loop
+            let current_tools: Vec<&str> = tool_calls.iter().map(|tc| tc.function.name.as_str()).collect();
+            if tool_calls.len() == 1 && current_tools[0] == last_tool_name {
+                same_tool_streak += 1;
+            } else {
+                same_tool_streak = 1;
+            }
+            last_tool_name = if tool_calls.len() == 1 {
+                current_tools[0].to_string()
+            } else {
+                String::new()
+            };
+
+            if same_tool_streak > MAX_SAME_TOOL_STREAK {
+                eprintln!(
+                    "\n{}: {} called {} times in a row, stopping.",
+                    "Warning".yellow().bold(),
+                    last_tool_name,
+                    same_tool_streak
+                );
+                break;
+            }
+
             // Execute tool calls and add results
             for tc in &tool_calls {
                 println!(
@@ -210,6 +251,8 @@ impl AgentLoop {
 
             // Continue the loop - LLM will process tool results
         }
+
+        Ok(captured_output)
     }
 }
 
